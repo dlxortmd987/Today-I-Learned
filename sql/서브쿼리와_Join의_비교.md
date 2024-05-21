@@ -1,50 +1,69 @@
 기존 레거시 코드에 작성된 쿼리 중 5초 이상이 걸리는 쿼리가 존재했다.
 
 대략 구조가 5개의 테이블을 조인(JOIN)하고, 특정 열에 대한 COUNT 연산과 GROUP BY 구문이 들어가있는 형태였다.
-쿼리를 설명하면, A의 PK와 1대 다로 연관된 C, D, E 테이블이 있고 PK와 연관된 C, D, E 테이블의 row 수를 세는 조회 쿼리이다.
 
 ```mysql
-SELECT A.C1
-    # ...중략 
-    COUNT(C.C1) + COUNT(D.C1) + COUNT(E.C1)
+SELECT A.C1,
+       A.C2,
+    COUNT(distinct B.C1) + COUNT(distinct C.C1) + COUNT(distinct D.C1)
 FROM A
-INNER JOIN B
-INNER JOIN C ON A.C1 = C.C2 
-INNER JOIN D ON A.C1 = D.C2
-INNER JOIN E ON A.C1 = E.C2
-GROUP BY A.C1, A.C2, A.C2, B.C2,  A.C2
+         INNER JOIN B ON A.C1 = B.C2
+         INNER JOIN C ON A.C1 = C.C2
+         INNER JOIN D ON A.C1 = D.C2
+GROUP BY A.C1, A.C2
+ORDER BY A.C2
 LIMIT 100
 ```
 
-운영 환경에서 대략 row 수를 나열하면 다음과 같았다.
 
-| 테이블 | row 수 |
-|-----|-------|
-| A   | 10만개  |
-| B   | 1000개 |
-| C   | 9만개   |
-| D   | 9만개   |
-| E   | 9만개   |
+테이블 구조를 단순화 하면 다음과 같고, 기존 쿼리에서 ORDER BY를 할 때 인덱스가 걸린 컬럼을 이용했지만, 집계함수로 인해 Full Table Scan이 발생하는 상황이었다.
+```mysql
+CREATE TABLE A
+(
+    C1 varchar(30) not null primary key,
+    C2 datetime    null
+);
+create index idx_c2 on A (C2);
 
-따라서 조인 조건을 고려한 조인 연산의 결과물이 대략 8억개 정도 나오는 상황이었다.
 
-JOIN 연산 결과 자체가 많이 나오기도 하고, GROUP BY와 COUNT 연산까지 수행하기 떄문에 5초가 나오는 것으로 예상했다.
+CREATE TABLE B
+(
+    C1 bigint      not null primary key,
+    C2 varchar(30) not null
+);
+create index idx_c2 on B (C2);
 
-해당 쿼리는 굳이 JOIN으로 계산하는 것보다 서브쿼리로 작성하면 더 효율적이지 않을까 생각했다.
+CREATE TABLE C
+(
+    C1 bigint      not null primary key,
+    C2 varchar(30) not null
+);
+create index idx_c2 on C (C2);
 
-그 이유는, A 테이블의 PK와 연관된 C, D, E의 row 수가 10개 미만인 현재 상황에서, JOIN 으로 조회하는 것 대비 서브쿼리는 전체 row 수를 줄일 수 있게 때문이다.
+CREATE TABLE D
+(
+    C1 bigint      not null primary key,
+    C2 varchar(30) not null
+);
+create index idx_c2 on D (C2);
+```
 
-실행계획
+Join으로 모든 테이블의 결과 Set을 합친 후 집계함수를 작성하면 인덱스를 이용하지 못하기 때문에 Join을 하지 않고 서브 쿼리 형태로 COUNT를 세는 방식으로 변경했다.
 
-해당 쿼리를 결국 다음과 같이 바꾸고 쿼리 실행 속도를 200ms 대로 낮출 수 있었다...!
+서브 쿼리 형태로 짜면 다음과 같이 짤 수 있는데, A.C2에 인덱스가 걸려있기 때문에 인덱스 스캔을 한 후 100개만 가져올 수 있게 되었다.
+
+또한 서브 쿼리로 짜도 괜찮다고 판단한 이유는 서브쿼리 내부에서 조건으로 인덱스 스캔을 하기 때문에 큰 부하가 없다고 판단했기 때문이다. 
 
 ```mysql
-SELECT A.C1
-    # ...중략 
-    (SELECT COUNT(1) FROM C WHERE C.C2 = A.C1) + 
-       (SELECT COUNT(1) FROM D WHERE D.C2 = A.C1) + 
+SELECT A.C1,       
+       A.C2,
+       (SELECT COUNT(1) FROM C WHERE C.C2 = A.C1) +
+       (SELECT COUNT(1) FROM D WHERE D.C2 = A.C1) +
        (SELECT COUNT(1) FROM E WHERE E.C2 = A.C2)
 FROM A
-INNER JOIN B
+ORDER BY A.C2
 LIMIT 100
 ```
+
+기존 방식에서는 A 테이블의 Full Table Scan으로 15만개의 데이터를 가져와 해당 쿼리를 실행하는데 5초가 소요되었는데<br>
+변경된 방식에서는 인덱스 스캔으로 100개의 데이터를 가져와서 약 200ms 대의 속도를 보여줬다.
