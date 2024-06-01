@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.mybatisbatch.mapper.ComputerMapper">
+
+    <insert id="insert" parameterType="com.example.mybatisbatch.domain.Computer">
+        INSERT INTO Computers (id, name)
+        VALUES (#{id}, #{name})
+    </insert>
+
+    <select id="selectAll" resultType="com.example.mybatisbatch.domain.Computer">
+        SELECT *
+        FROM Computers
+    </select>
+
+    <select id="insertBatch" parameterType="com.example.mybatisbatch.domain.Computer">
+        <foreach collection="computers" item="computer" separator=";">
+            INSERT INTO Computers (id, name)
+            VALUES (#{id}, #{name})
+        </foreach>
+    </select>
+</mapper>
