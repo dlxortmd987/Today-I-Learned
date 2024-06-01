@@ -14,10 +14,14 @@
         FROM Computers
     </select>
 
-    <select id="insertBatch" parameterType="com.example.mybatisbatch.domain.Computer">
-        <foreach collection="computers" item="computer" separator=";">
-            INSERT INTO Computers (id, name)
-            VALUES (#{id}, #{name})
+    <insert id="insertBatch" parameterType="com.example.mybatisbatch.domain.Computer">
+        insert into Computers (id, name)
+        values
+        <foreach item="computer" collection="list" separator=",">
+            (
+             #{computer.id},
+             #{computer.name}
+            )
         </foreach>
-    </select>
+    </insert>
 </mapper>

@@ -39,6 +39,20 @@ class BatchInsertTest {
 		log.info("----------걸린 시간: {} (ms)", (end - start));
 	}
 
+	@Test
+	void mybatic_foreach로_삽입하는_경우() {
+		List<Computer> computers = COMPUTERS_FIXTURE(1000);
+
+		long start = System.currentTimeMillis();
+		computerMapper.insertBatch(computers);
+		long end = System.currentTimeMillis();
+
+
+		List<Computer> actual = computerMapper.selectAll();
+		assertThat(actual).usingRecursiveComparison().isEqualTo(computers);
+		log.info("----------걸린 시간: {} (ms)", (end - start));
+	}
+
 	private List<Computer> COMPUTERS_FIXTURE(int size) {
 		List<Computer> result = new ArrayList<>();
 		for (long i = 1; i <= size; i++) {

@@ -12,4 +12,6 @@ public interface ComputerMapper {
 	void insert(Computer computer);
 
 	List<Computer> selectAll();
+
+	void insertBatch(List<Computer> computers);
 }
